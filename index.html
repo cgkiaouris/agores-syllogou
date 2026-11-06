@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Αγορές Συλλόγου Γονέων και Κηδεμόνων – 9ο Νηπιαγωγείο</title>
+<style>
+:root{--bg:#f6f8f7;--surface:#fff;--text:#1d2b27;--muted:#5d6b66;--line:#dbe3df;--accent:#1f6f5c;--warn:#a4472b}
+@media (prefers-color-scheme:dark){:root{--bg:#141a18;--surface:#1c2421;--text:#e8efec;--muted:#9aaaa3;--line:#2e3935;--accent:#6fcbb0;--warn:#f0a58a}}
+*{box-sizing:border-box}
+body{margin:0;padding:1.5rem 1rem 3rem;background:var(--bg);color:var(--text);font:1rem/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:52rem;margin:0 auto}
+h1{font-size:1.5rem;line-height:1.25;margin:0 0 .25rem}
+.sub{color:var(--muted);margin:0 0 1.5rem}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:.75rem;margin-bottom:1.5rem}
+.summary div{background:var(--surface);border:1px solid var(--line);border-radius:.5rem;padding:.75rem 1rem}
+.summary span{display:block;color:var(--muted);font-size:.875rem}
+.summary strong{font-size:1.5rem;font-variant-numeric:tabular-nums}
+.summary .left strong{color:var(--accent)}
+.summary .spent strong{color:var(--warn)}
+.bar{height:.5rem;background:var(--line);border-radius:1rem;overflow:hidden;margin:-.5rem 0 1.5rem}
+.bar i{display:block;height:100%;background:var(--accent);width:0}
+.wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:.5rem}
+table{width:100%;border-collapse:collapse;min-width:34rem}
+th,td{padding:.65rem .9rem;text-align:left;border-bottom:1px solid var(--line)}
+th{font-size:.875rem;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.none{color:var(--muted)}
+.msg{padding:1rem;color:var(--muted)}
+.foot{color:var(--muted);font-size:.875rem;margin-top:1rem}
+</style>
+</head>
+<body>
+<main>
+<h1>Αγορές Συλλόγου Γονέων και Κηδεμόνων</h1>
+<p class="sub">9ο Νηπιαγωγείο – αναλυτικός πίνακας δαπανών</p>
+
+<div class="summary">
+  <div><span>Αρχικό ποσό</span><strong id="initial">–</strong></div>
+  <div class="spent"><span>Συνολικές δαπάνες</span><strong id="spent">–</strong></div>
+  <div class="left"><span>Τρέχον υπόλοιπο</span><strong id="left">–</strong></div>
+</div>
+<div class="bar" aria-hidden="true"><i id="barfill"></i></div>
+
+<div class="wrap">
+<table>
+  <thead>
+    <tr><th>α/α</th><th>Ημερομηνία</th><th>Είδος</th><th class="num">Ποσότητα</th><th class="num">Ποσό</th><th>Απόδειξη</th></tr>
+  </thead>
+  <tbody id="rows"><tr><td colspan="6" class="msg">Φόρτωση…</td></tr></tbody>
+</table>
+</div>
+<p class="foot" id="foot"></p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+/* Ρυθμίσεις: το όνομα του αρχείου Excel και ο φάκελος των αποδείξεων (στο ίδιο repository) */
+var XLSX_FILE = "agores.xlsx";
+var RECEIPTS_DIR = "apodeixeis/";
+
+var fmt = new Intl.NumberFormat('el-GR',{style:'currency',currency:'EUR'});
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function dash(s){return (s===""||s==null)?'<span class="none">\u2013</span>':esc(s);}
+function toNum(v){ if(typeof v==="number") return v; v=String(v||"").replace(/[^\d.,-]/g,""); if(!v) return NaN;
+  if(v.indexOf(",")>-1&&v.indexOf(".")>-1) v=v.replace(/\./g,"").replace(",","."); else v=v.replace(",","."); return parseFloat(v); }
+function toDate(v){
+  if(typeof v==="number"){ var d=new Date(Math.round((v-25569)*86400000));
+    return ("0"+d.getUTCDate()).slice(-2)+"/"+("0"+(d.getUTCMonth()+1)).slice(-2)+"/"+d.getUTCFullYear(); }
+  return v; }
+
+function render(rows){
+  var initial=NaN, items=[];
+  rows.forEach(function(r){
+    r.forEach(function(c,i){ if(/^Αρχικό ποσό/i.test(String(c).trim())) initial=toNum(r[i+1]); });
+    if(/^\d+$/.test(String(r[0]).trim())) items.push(r);
+  });
+  var spent=0, html="";
+  items.forEach(function(r){
+    var amt=toNum(r[4]); if(!isNaN(amt)) spent+=amt;
+    var label=String(r[5]||"").trim(), file=String(r[6]||"").trim(), receipt;
+    if(file){ var href=/^https?:\/\//i.test(file)?file:RECEIPTS_DIR+encodeURI(file);
+      receipt='<a href="'+esc(href)+'" target="_blank" rel="noopener">'+esc(label||"Απόδειξη")+'</a>'; }
+    else receipt=label?esc(label):'<span class="none">\u2013</span>';
+    html+='<tr><td>'+esc(r[0])+'</td><td>'+dash(toDate(r[1]))+'</td><td>'+esc(r[2])+'</td><td class="num">'+dash(r[3])+
+      '</td><td class="num">'+(isNaN(amt)?"\u2013":fmt.format(amt))+'</td><td>'+receipt+'</td></tr>';
+  });
+  document.getElementById("rows").innerHTML = html||'<tr><td colspan="6" class="msg">Δεν βρέθηκαν αγορές.</td></tr>';
+  document.getElementById("spent").textContent=fmt.format(spent);
+  if(!isNaN(initial)){
+    document.getElementById("initial").textContent=fmt.format(initial);
+    document.getElementById("left").textContent=fmt.format(initial-spent);
+    document.getElementById("barfill").style.width=Math.min(100,Math.max(0,spent/initial*100))+"%";
+  }
+  document.getElementById("foot").textContent="Τα στοιχεία διαβάζονται αυτόματα από το αρχείο Excel. Οι αποδείξεις ανοίγουν σε νέο παράθυρο.";
+}
+function fail(m){document.getElementById("rows").innerHTML='<tr><td colspan="6" class="msg">'+m+'</td></tr>';}
+
+fetch(XLSX_FILE+"?v="+Date.now()).then(function(r){ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+.then(function(buf){
+  var wb=XLSX.read(buf,{type:"array"});
+  var ws=wb.Sheets[wb.SheetNames[0]];
+  render(XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:""}));
+}).catch(function(){ fail("Δεν ήταν δυνατή η φόρτωση του αρχείου "+XLSX_FILE+". Αν ανοίγετε τη σελίδα από τον υπολογιστή σας (όχι από το διαδίκτυο), αυτό είναι φυσιολογικό."); });
+</script>
+</body>
+</html>
